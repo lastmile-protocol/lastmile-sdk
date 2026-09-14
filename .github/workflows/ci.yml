@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The voucher format is exact to the last integer: u64 nonces and i128
+        # amounts both run past what a JS number can hold. Run every supported
+        # Node, because a BigInt or JSON change here is a wrong signature.
+        node: ['20', '22', '24']
+    name: node ${{ matrix.node }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm install
+      - run: npm test
+
+  shape:
+    runs-on: ubuntu-latest
+    name: package shape
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      # The published tarball must carry the source and nothing else.
+      - name: npm pack contains the source and nothing else
+        run: |
+          npm pack --silent >/dev/null
+          tar tzf ./*.tgz
+          tar tzf ./*.tgz | grep -qE '^package/src/index\.js$'
+          ! tar tzf ./*.tgz | grep -qE '^package/(test|node_modules)/'
