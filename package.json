@@ -1,13 +1,14 @@
 {
   "name": "@lastmile/sdk",
-  "version": "0.2.0",
-  "description": "Sign a Stellar payment with no connectivity; redeem it when signal returns.",
+  "version": "0.3.0",
+  "description": "Sign a Stellar payment with no connectivity; redeem it when signal returns; ramp in and out through an anchor.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
     "./chain": "./src/chain.js",
-    "./bytes": "./src/bytes.js"
+    "./bytes": "./src/bytes.js",
+    "./anchor": "./src/anchor.js"
   },
   "files": [
     "src"
@@ -19,10 +20,13 @@
     "soroban",
     "offline",
     "payments",
-    "ed25519"
+    "ed25519",
+    "sep-10",
+    "sep-24",
+    "anchor"
   ],
   "scripts": {
-    "test": "node --test test/roundtrip.mjs test/chain.mjs"
+    "test": "node --test test/roundtrip.mjs test/chain.mjs test/anchor.mjs"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^17.0.1"
