@@ -32,6 +32,7 @@ verify(unpack(code));        // true
 | --- | --- | --- |
 | `@lastmile/sdk` | no | payload, sign, verify, pack, unpack |
 | `@lastmile/sdk/chain` | yes | redeem, and read vault state |
+| `@lastmile/sdk/anchor` | yes | on- and off-ramp through a licensed anchor |
 
 The split is the point. A wallet that only ever signs never loads an RPC client,
 and the offline half runs unchanged in a browser — no `Buffer`, no `node:crypto`.
@@ -56,6 +57,66 @@ const { hash, ledger } = await vault.redeem(voucher, submitterSecret);
 
 A failed call throws a `LastmileError` carrying the contract's own error code, so
 you can branch on `e.code === 6` ("already redeemed") rather than parse a string.
+
+## Getting cash in and out
+
+Two ramps, because they solve different problems.
+
+The **cash desk** is a person with a cash box: an agent takes naira and signs a
+voucher, or redeems a voucher and hands over naira. It needs no licence, no
+bank and no connectivity on the customer's side, which is the whole reason it
+exists. That lives in the wallet, not here.
+
+The other ramp is banks, mobile money and cards, and that needs a licence
+Lastmile does not have and should not pretend to. Stellar's answer is anchors:
+regulated businesses that take fiat in and issue tokens out. `@lastmile/sdk/anchor`
+is a client for them — SEP-1 to find one, SEP-10 to authenticate, SEP-24 to hand
+the customer off to the anchor's own hosted flow for the bank details and the
+identity checks. It integrates an anchor. It is not one.
+
+```js
+import { connectAnchor } from '@lastmile/sdk/anchor';
+
+const anchor = await connectAnchor({ homeDomain: 'testanchor.stellar.org' });
+await anchor.info();                 // what it takes in, pays out, and the limits
+
+const token = await anchor.authenticate(account, signHash);
+const { url, id } = await anchor.start('deposit', {
+  assetCode: 'USDC', token, account, amount: 25,
+});
+// open `url`; poll `anchor.transaction(id, token)` for where it got to
+```
+
+### Why `signHash` and not a secret key
+
+SEP-10 authentication means signing a challenge transaction with the user's own
+key. In this wallet that key is a non-extractable `CryptoKey` in the browser: it
+signs on request and refuses to be exported, which is the property worth having.
+So the signing is split. This module does the protocol and the XDR and hands out
+the 32 bytes to sign; `signHash` returns 64 bytes of ed25519 signature. The key
+never passes through here, and does not have to exist in a form that could.
+
+`challenge()` also returns that hash **and the anchor's own signature over it**,
+as hex. A wallet holding the key can check that the anchor vouched for exactly
+the bytes it is about to sign, without parsing a byte of XDR.
+
+### What the client refuses to sign
+
+A challenge is a transaction, and a transaction signed carelessly moves money.
+What makes a SEP-10 challenge safe is a set of properties, and they are checked
+rather than assumed:
+
+- **sequence number 0** — so the thing can never be submitted, whatever it says
+- **source is the anchor's published `SIGNING_KEY`**, from its own `stellar.toml`
+- **every operation is a `manage_data`** — no payment rides along
+- **the first operation is sourced by your account** — not somebody else's
+- **its key is `"<home domain> auth"`** — a token minted for another domain is not
+  a token for this one
+- **the anchor has already signed it** — so the bytes came from the party you chose
+
+Each of those has a test that builds the violating challenge for real and watches
+it be refused. A validator tested only on good input is indistinguishable from
+one that returns `true`.
 
 ## Two things this library refuses to do quietly
 
@@ -109,11 +170,14 @@ payee is not paid. That is the risk a merchant takes accepting a cheque.
 npm test
 ```
 
-19 of them. The offline suite squeezes a voucher through transport and checks it
+49 of them. The offline suite squeezes a voucher through transport and checks it
 means the same thing coming out, and that an edited one does not. The chain suite
 covers what must work before any network call: recovering a contract error from
 every envelope it arrives in, and refusing a truncated key before it becomes a
-transaction someone paid for.
+transaction someone paid for. The anchor suite builds each malformed challenge
+with the same library an anchor would use, and checks it is refused — plus the
+SDF test anchor's real `stellar.toml`, recorded verbatim, so the parser has met a
+document somebody actually serves.
 
 ## Licence
 
