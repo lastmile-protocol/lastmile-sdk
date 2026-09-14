@@ -25,6 +25,30 @@ jobs:
       - run: npm install
       - run: npm test
 
+  portable:
+    runs-on: ubuntu-latest
+    name: the offline half runs in a browser
+    steps:
+      - uses: actions/checkout@v5
+      # The phone that signs a voucher with no signal is the whole point, and a
+      # browser has neither Buffer nor node:crypto. Catching this here is the
+      # difference between a library that works on a phone and one that only
+      # looks like it does.
+      - name: src imports no Node built-ins
+        run: |
+          if grep -rnE "(from|require\()[[:space:]]*['\"]node:" src/; then
+            echo "::error::src/ imports a Node built-in; the offline half must run in a browser"
+            exit 1
+          fi
+          echo "no node: imports"
+      - name: src does not use Buffer
+        run: |
+          if grep -rnE "Buffer[.(]|new[[:space:]]+Buffer" src/; then
+            echo "::error::src/ uses Buffer, which does not exist in a browser"
+            exit 1
+          fi
+          echo "no Buffer"
+
   shape:
     runs-on: ubuntu-latest
     name: package shape
@@ -40,4 +64,5 @@ jobs:
           npm pack --silent >/dev/null
           tar tzf ./*.tgz
           tar tzf ./*.tgz | grep -qE '^package/src/index\.js$'
+          tar tzf ./*.tgz | grep -qE '^package/src/chain\.js$'
           ! tar tzf ./*.tgz | grep -qE '^package/(test|node_modules)/'
