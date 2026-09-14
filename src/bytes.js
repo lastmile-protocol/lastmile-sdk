@@ -31,6 +31,21 @@ export function fromHex(s) {
   return out;
 }
 
+// Standard base64, padded. Stellar's XDR envelopes want this spelling, not the
+// url-safe one, so both live here rather than being re-derived at each caller.
+export function toBase64(u8) {
+  let s = '';
+  for (const b of u8) s += String.fromCharCode(b);
+  return btoa(s);
+}
+
+export function fromBase64(s) {
+  if (typeof s !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(s)) {
+    throw new TypeError('expected a base64 string');
+  }
+  return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+}
+
 // base64url, via the one base64 codec every runtime agrees on.
 export function toBase64Url(u8) {
   let s = '';

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Keypair } from '@stellar/stellar-sdk';
 import { sign, verify, pack, unpack, payload, encode, PACKED_BYTES } from '../src/index.js';
-import { fromBase64Url, toHex } from '../src/bytes.js';
+import { fromBase64Url, toBase64Url, fromBase64, toBase64, toHex } from '../src/bytes.js';
 
 const payer = Keypair.random();
 const payee = Keypair.random();
@@ -92,4 +92,27 @@ test('malformed vouchers are rejected', () => {
     () => pack({ ...v, auth: { ...auth(), amount: '99999999999999999999' } }),
     /does not fit the wire format/,
   );
+});
+
+test('base64 round-trips every byte, in both spellings', () => {
+  // Standard base64 for XDR envelopes, base64url for anything that goes in a
+  // URL or a QR code. Both are hand-rolled on btoa/atob so a browser needs no
+  // Buffer; both therefore need proving over the full byte range.
+  const all = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) all[i] = i;
+  assert.deepEqual(fromBase64(toBase64(all)), all);
+  assert.deepEqual(fromBase64Url(toBase64Url(all)), all);
+
+  // Against the runtime's own encoder, so a subtle padding bug cannot hide.
+  assert.equal(toBase64(all), Buffer.from(all).toString('base64'));
+  assert.equal(toBase64Url(all), Buffer.from(all).toString('base64url'));
+
+  for (let n = 0; n < 8; n++) {
+    const u8 = all.slice(0, n);
+    assert.deepEqual(fromBase64(toBase64(u8)), u8, `length ${n}`);
+    assert.deepEqual(fromBase64Url(toBase64Url(u8)), u8, `length ${n}`);
+  }
+
+  assert.throws(() => fromBase64('not base64!'), TypeError);
+  assert.throws(() => fromBase64Url('has+slash/'), TypeError);
 });
