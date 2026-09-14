@@ -4,8 +4,14 @@
   "description": "Sign a Stellar payment with no connectivity; redeem it when signal returns.",
   "type": "module",
   "main": "src/index.js",
-  "exports": { ".": "./src/index.js" },
-  "files": ["src"],
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "files": ["src", "index.d.ts"],
   "license": "Apache-2.0",
   "repository": "github:lastmile-protocol/lastmile-sdk",
   "scripts": {
