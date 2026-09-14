@@ -1,15 +1,28 @@
 {
   "name": "@lastmile/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Sign a Stellar payment with no connectivity; redeem it when signal returns.",
   "type": "module",
   "main": "src/index.js",
-  "exports": { ".": "./src/index.js" },
-  "files": ["src"],
+  "exports": {
+    ".": "./src/index.js",
+    "./chain": "./src/chain.js",
+    "./bytes": "./src/bytes.js"
+  },
+  "files": [
+    "src"
+  ],
   "license": "Apache-2.0",
   "repository": "github:lastmile-protocol/lastmile-sdk",
+  "keywords": [
+    "stellar",
+    "soroban",
+    "offline",
+    "payments",
+    "ed25519"
+  ],
   "scripts": {
-    "test": "node test/roundtrip.mjs"
+    "test": "node --test test/roundtrip.mjs test/chain.mjs"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^17.0.1"
