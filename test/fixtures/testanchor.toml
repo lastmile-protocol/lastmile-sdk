@@ -1,0 +1,34 @@
+# Recorded from https://testanchor.stellar.org/.well-known/stellar.toml
+# The SDF reference anchor. Kept verbatim so the parser is tested against a
+# document an anchor actually serves, not one written to suit the parser.
+ACCOUNTS = ["GCSGSR6KQQ5BP2FXVPWRL6SWPUSFWLVONLIBJZUKTVQB5FYJFVL6XOXE"]
+VERSION = "0.1.0"
+NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
+SIGNING_KEY = "GCHLHDBOKG2JWMJQBTLSL5XG6NO7ESXI2TAQKZXCXWXB5WI2X6W233PR"
+WEB_AUTH_ENDPOINT = "https://testanchor.stellar.org/auth"
+TRANSFER_SERVER_SEP0024 = "https://testanchor.stellar.org/sep24"
+KYC_SERVER = "https://testanchor.stellar.org/sep12"
+
+[[CURRENCIES]]
+code = "SRT"
+issuer = "GCDNJUBQSX7AJWLJACMJ7I4BC3Z47BQUTMHEICZLE6MU4KQBRYG5JY6B"
+status = "test"
+is_asset_anchored = false
+desc = "A fake anchored asset to use with this test anchor."
+
+[[CURRENCIES]]
+code = "USDC"
+issuer = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+status = "test"
+is_asset_anchored = false
+desc = "A fake anchored USDC to use with this test anchor."
+
+[[CURRENCIES]]
+code = "native"
+status = "test"
+is_asset_anchored = false
+desc = "Stellar lumens on the test network."
+
+[DOCUMENTATION]
+ORG_NAME = "Stellar Development Foundation"
+ORG_URL = "https://www.stellar.org"
