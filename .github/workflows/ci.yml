@@ -65,4 +65,22 @@ jobs:
           tar tzf ./*.tgz
           tar tzf ./*.tgz | grep -qE '^package/src/index\.js$'
           tar tzf ./*.tgz | grep -qE '^package/src/chain\.js$'
+          tar tzf ./*.tgz | grep -qE '^package/src/anchor\.js$'
           ! tar tzf ./*.tgz | grep -qE '^package/(test|node_modules)/'
+      # Every subpath in "exports" must resolve, on a real install, from a
+      # directory that is not this one. A typo here is invisible until someone
+      # installs the package and it is not this repo's tests that catch it.
+      - name: every declared export resolves
+        run: |
+          npm pack --silent >/dev/null
+          mkdir -p /tmp/shape && cd /tmp/shape
+          npm init -y >/dev/null
+          npm install "$GITHUB_WORKSPACE"/*.tgz >/dev/null
+          node --input-type=module -e "
+            const subpaths = ['@lastmile/sdk', '@lastmile/sdk/chain', '@lastmile/sdk/bytes', '@lastmile/sdk/anchor'];
+            for (const s of subpaths) {
+              const m = await import(s);
+              if (!Object.keys(m).length) throw new Error(s + ' exports nothing');
+              console.log(s, '->', Object.keys(m).length, 'exports');
+            }
+          "
