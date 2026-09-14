@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Keypair } from '@stellar/stellar-sdk';
 import { sign, verify, pack, unpack, payload, encode, PACKED_BYTES } from '../src/index.js';
+import { fromBase64Url, toHex } from '../src/bytes.js';
 
 const payer = Keypair.random();
 const payee = Keypair.random();
@@ -30,7 +31,7 @@ test('a signed voucher verifies', () => {
 
 test('packing is exactly the size we claim', () => {
   const s = pack(sign(auth(), device.secret()));
-  assert.equal(Buffer.from(s, 'base64url').length, PACKED_BYTES);
+  assert.equal(fromBase64Url(s).length, PACKED_BYTES);
   assert.ok(s.length < 260, `base64url should stay QR-sized, got ${s.length}`);
 });
 
@@ -53,7 +54,7 @@ test('a voucher still verifies after being packed and unpacked', () => {
 
 test('the payload is identical before and after transport', () => {
   const v = sign(auth(), device.secret());
-  assert.ok(payload(unpack(pack(v)).auth).equals(payload(v.auth)));
+  assert.deepEqual(payload(unpack(pack(v)).auth), payload(v.auth));
 });
 
 test('editing the amount breaks the signature', () => {
@@ -70,7 +71,7 @@ test('redirecting the payee breaks the signature', () => {
 
 test('another device cannot pass off a voucher as its own', () => {
   const v = sign(auth(), device.secret());
-  v.device = Buffer.from(Keypair.random().rawPublicKey()).toString('hex');
+  v.device = toHex(new Uint8Array(Keypair.random().rawPublicKey()));
   assert.equal(verify(v), false);
 });
 

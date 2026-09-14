@@ -9,10 +9,28 @@
 //
 // Only the fourth job -- redeeming -- needs connectivity, and whoever has it can
 // do it: the payee, the payer, or a shopkeeper with a data bundle. The signature
-// is the authority, not the sender.
+// is the authority, not the sender. That job lives in ./chain.js, which is a
+// separate import on purpose: nothing here touches the network, so a phone can
+// load this half alone and still pay.
+//
+// Everything in this file runs unchanged in a browser. There is no `Buffer` and
+// no `node:crypto`; a wallet that has to work with the radio off cannot depend
+// on a server runtime being underneath it.
 
 import { Address, Keypair, StrKey, nativeToScVal, xdr } from '@stellar/stellar-sdk';
-import { createHash } from 'node:crypto';
+import {
+  concat,
+  fromBase64Url,
+  fromHex,
+  readI64BE,
+  readU64BE,
+  sha256,
+  toBase64Url,
+  toHex,
+  utf8,
+  writeI64BE,
+  writeU64BE,
+} from './bytes.js';
 
 export const TESTNET = {
   rpc: 'https://soroban-testnet.stellar.org',
@@ -20,7 +38,7 @@ export const TESTNET = {
 };
 
 /** Mixed into every signed payload so a Lastmile signature is only ever that. */
-const DOMAIN = Buffer.from('lastmile.v1.authorization');
+const DOMAIN = utf8('lastmile.v1.authorization');
 
 /** Contract error codes, so callers can branch on meaning rather than parse strings. */
 export const ERRORS = {
@@ -81,7 +99,7 @@ function exact(v, field) {
  * A Soroban contracttype struct is an ScVal map whose symbol keys are sorted.
  * The sort order is load-bearing: get it wrong and the hash differs silently.
  */
-export function encode(auth) {
+export function toScVal(auth) {
   const entries = [
     ['amount', nativeToScVal(exact(auth.amount, 'amount'), { type: 'i128' })],
     ['expires', nativeToScVal(exact(auth.expires, 'expires'), { type: 'u64' })],
@@ -89,12 +107,17 @@ export function encode(auth) {
     ['payee', new Address(auth.payee).toScVal()],
     ['payer', new Address(auth.payer).toScVal()],
   ].map(([k, v]) => new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(k), val: v }));
-  return xdr.ScVal.scvMap(entries).toXDR();
+  return xdr.ScVal.scvMap(entries);
+}
+
+/** The same value as bytes -- what actually gets hashed. */
+export function encode(auth) {
+  return toScVal(auth).toXDR();
 }
 
 /** The 32 bytes a device signs. Verified byte-for-byte against the deployed contract. */
 export function payload(auth) {
-  return createHash('sha256').update(Buffer.concat([DOMAIN, encode(auth)])).digest();
+  return sha256(concat(DOMAIN, new Uint8Array(encode(auth))));
 }
 
 // ---------------------------------------------------------------- signing
@@ -110,19 +133,17 @@ export function sign(auth, device) {
   const kp = typeof device === 'string' ? Keypair.fromSecret(device) : device;
   return {
     auth,
-    // Buffer.from matters: sign() returns a Uint8Array, whose toString('hex')
-    // quietly yields comma-separated decimals instead of hex.
-    device: Buffer.from(kp.rawPublicKey()).toString('hex'),
-    sig: Buffer.from(kp.sign(payload(auth))).toString('hex'),
+    // toHex, not Uint8Array#toString('hex'): the built-in quietly yields
+    // comma-separated decimals and the mistake looks like working code.
+    device: toHex(new Uint8Array(kp.rawPublicKey())),
+    sig: toHex(new Uint8Array(kp.sign(payload(auth)))),
   };
 }
 
 /** Check a voucher's signature locally, with no network. */
 export function verify(voucher) {
-  const kp = Keypair.fromPublicKey(
-    StrKey.encodeEd25519PublicKey(Buffer.from(voucher.device, 'hex')),
-  );
-  return kp.verify(payload(voucher.auth), Buffer.from(voucher.sig, 'hex'));
+  const kp = Keypair.fromPublicKey(StrKey.encodeEd25519PublicKey(fromHex(voucher.device)));
+  return kp.verify(payload(voucher.auth), fromHex(voucher.sig));
 }
 
 // ---------------------------------------------------------------- transport
@@ -158,25 +179,25 @@ export function pack(v) {
   if (amount < 0n || amount > MAX_AMOUNT) {
     throw new RangeError(`amount ${amount} does not fit the wire format (max ${MAX_AMOUNT})`);
   }
-  const b = Buffer.alloc(PACKED_BYTES);
-  Buffer.from(StrKey.decodeEd25519PublicKey(v.auth.payer)).copy(b, OFF.payer);
-  Buffer.from(StrKey.decodeEd25519PublicKey(v.auth.payee)).copy(b, OFF.payee);
-  b.writeBigInt64BE(amount, OFF.amount);
-  b.writeBigUInt64BE(exact(v.auth.nonce, 'nonce'), OFF.nonce);
-  b.writeBigUInt64BE(exact(v.auth.expires, 'expires'), OFF.expires);
+  const b = new Uint8Array(PACKED_BYTES);
+  b.set(new Uint8Array(StrKey.decodeEd25519PublicKey(v.auth.payer)), OFF.payer);
+  b.set(new Uint8Array(StrKey.decodeEd25519PublicKey(v.auth.payee)), OFF.payee);
+  writeI64BE(b, OFF.amount, amount);
+  writeU64BE(b, OFF.nonce, exact(v.auth.nonce, 'nonce'));
+  writeU64BE(b, OFF.expires, exact(v.auth.expires, 'expires'));
 
-  const dev = Buffer.from(v.device, 'hex');
-  const sig = Buffer.from(v.sig, 'hex');
+  const dev = fromHex(v.device);
+  const sig = fromHex(v.sig);
   if (dev.length !== 32) throw new TypeError(`device key should be 32 bytes, got ${dev.length}`);
   if (sig.length !== 64) throw new TypeError(`signature should be 64 bytes, got ${sig.length}`);
-  dev.copy(b, OFF.device);
-  sig.copy(b, OFF.sig);
-  return b.toString('base64url');
+  b.set(dev, OFF.device);
+  b.set(sig, OFF.sig);
+  return toBase64Url(b);
 }
 
 /** Recover a voucher from its packed form. */
 export function unpack(s) {
-  const b = Buffer.from(s, 'base64url');
+  const b = fromBase64Url(s);
   if (b.length !== PACKED_BYTES) {
     throw new TypeError(`voucher should be ${PACKED_BYTES} bytes, got ${b.length}`);
   }
@@ -184,11 +205,11 @@ export function unpack(s) {
     auth: {
       payer: StrKey.encodeEd25519PublicKey(b.subarray(OFF.payer, OFF.payer + 32)),
       payee: StrKey.encodeEd25519PublicKey(b.subarray(OFF.payee, OFF.payee + 32)),
-      amount: b.readBigInt64BE(OFF.amount).toString(),
-      nonce: b.readBigUInt64BE(OFF.nonce).toString(),
-      expires: b.readBigUInt64BE(OFF.expires).toString(),
+      amount: readI64BE(b, OFF.amount).toString(),
+      nonce: readU64BE(b, OFF.nonce).toString(),
+      expires: readU64BE(b, OFF.expires).toString(),
     },
-    device: b.subarray(OFF.device, OFF.device + 32).toString('hex'),
-    sig: b.subarray(OFF.sig, OFF.sig + 64).toString('hex'),
+    device: toHex(b.subarray(OFF.device, OFF.device + 32)),
+    sig: toHex(b.subarray(OFF.sig, OFF.sig + 64)),
   };
 }
